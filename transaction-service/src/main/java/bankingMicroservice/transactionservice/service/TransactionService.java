@@ -8,7 +8,7 @@ import org.springframework.http.ResponseEntity;
 
 public interface TransactionService {
     void saveTransaction(TransactionDto transactionDto);
-    ResponseEntity<Response> credit(TransactionRequest transactionRequest);
+    ResponseEntity<Response> credit (TransactionRequest transactionRequest);
     ResponseEntity<Response> debit(TransactionRequest transactionRequest);
     ResponseEntity<Response> transfer(TransferRequest transferRequest);
 }

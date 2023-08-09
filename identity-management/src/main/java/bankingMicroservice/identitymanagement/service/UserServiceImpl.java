@@ -1,9 +1,8 @@
 package bankingMicroservice.identitymanagement.service;
 
-import bankingMicroservice.identitymanagement.dto.Data;
-import bankingMicroservice.identitymanagement.dto.Response;
-import bankingMicroservice.identitymanagement.dto.UserRequest;
+import bankingMicroservice.identitymanagement.dto.*;
 import bankingMicroservice.identitymanagement.entity.User;
+import bankingMicroservice.identitymanagement.rabbitmq.publisher.RabbitMQJsonProducer;
 import bankingMicroservice.identitymanagement.repository.UserRepository;
 import bankingMicroservice.identitymanagement.utils.ResponseUtils;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -21,6 +20,9 @@ public class UserServiceImpl implements  UserService {
     @Autowired
     private UserRepository userRepository;
 
+    @Autowired
+    private RabbitMQJsonProducer jsonProducer;
+
     @Override
     public ResponseEntity<Response> registerUser(UserRequest userRequest) {
         String email = userRequest.getEmail();
@@ -34,6 +36,9 @@ public class UserServiceImpl implements  UserService {
 
         User user = createUserFromRequest(userRequest);
         User savedUser = userRepository.save(user);
+
+        EmailDetails emailDetails = createRegistrationEmail(user);
+        jsonProducer.sendJsonMessage(emailDetails);
 
         return createSuccessResponse(savedUser);
     }
@@ -53,6 +58,25 @@ public class UserServiceImpl implements  UserService {
                 .alternativePhoneNumber(userRequest.getAlternativePhoneNumber())
                 .status("ACTIVE")
                 .dateOfBirth(userRequest.getDateOfBirth())
+                .build();
+    }
+
+    private EmailDetails createRegistrationEmail(User user) {
+        return EmailDetails.builder()
+                .subject("ACCOUNT CREATION")
+                .recipient(user.getEmail())
+                .messageBody(
+                        "Dear " + user.getFirstName().toUpperCase() + " " +
+                                user.getOtherName().toUpperCase() + " " +
+                                user.getLastName().toUpperCase() +
+                                ", your account has been successful created. Your Acc. No. is " +
+                                user.getAccountNumber() + " and your balance is N" +
+                                user.getAccountBalance() + "." +
+                                "\n\nKindly note that this is demo mail, and that it exists sorely for test " +
+                                "purposes." +
+                                "\n\n\nBest Regards, \n\nMoses Hunsu."
+                )
+                //.attachment("C:\\Users\\moses.hunsu\\Documents\\Account test demo.txt")
                 .build();
     }
 
@@ -86,6 +110,41 @@ public class UserServiceImpl implements  UserService {
     }
 
     @Override
+    public ResponseEntity<Response> credit(TransactionRequest transactionRequest) {
+        User receivingUser = userRepository.findByAccountNumber(transactionRequest.getAccountNumber());
+        receivingUser.setAccountBalance(receivingUser.getAccountBalance().add(transactionRequest.getAmount()));
+        userRepository.save(receivingUser);
+        return createSuccessResponse(receivingUser);
+    }
+
+    @Override
+    public ResponseEntity<Response> debit(TransactionRequest transactionRequest) {
+        User debitingUser = userRepository.findByAccountNumber(transactionRequest.getAccountNumber());
+
+        if (debitingUser.getAccountBalance().compareTo(transactionRequest.getAmount()) <= 0) {
+
+            return ResponseEntity.ok().body(Response.builder()
+                    .responseMessage(ResponseUtils.UNSUCCESSFUL_TRANSACTION)
+                    .responseCode(ResponseUtils.INSUFFICIENT_BALANCE)
+                    .data(Data.builder()
+                            .accountName(debitingUser.getFirstName() + " " + debitingUser.getLastName())
+                            .accountBalance(debitingUser.getAccountBalance())
+                            .accountNumber(debitingUser.getAccountNumber())
+                            .build())
+                    .build());
+
+        } else {
+            debitingUser.setAccountBalance(debitingUser.getAccountBalance().subtract
+                    (transactionRequest.getAmount()));
+
+            userRepository.save(debitingUser);
+            return createSuccessResponse(debitingUser);
+        }
+
+    }
+
+
+    @Override
     public ResponseEntity<Response> balanceEnquiry(String accountNumber) {
         return Optional.ofNullable(userRepository.findByAccountNumber(accountNumber))
                 .map(this::createSuccessResponse)
@@ -107,6 +166,14 @@ public class UserServiceImpl implements  UserService {
                                 .build()));
     }
 
+    @Override
+    public User fetchUser(String accountNumber) {
+        return userRepository.existsByAccountNumber(accountNumber)
+                ? userRepository.findByAccountNumber(accountNumber)
+                : null;
+
+    }
+
     private ResponseEntity<Response> createSuccessResponse(User user) {
         Data userData = Data.builder()
                 .accountBalance(user.getAccountBalance())
@@ -115,8 +182,8 @@ public class UserServiceImpl implements  UserService {
                 .build();
 
         return ResponseEntity.ok(Response.builder()
-                .responseCode(ResponseUtils.SUCCESS)
-                .responseMessage(ResponseUtils.USER_SUCCESS_MESSAGE)
+                .responseCode(ResponseUtils.SUCCESSFUL_TRANSACTION)
+                .responseMessage("SUCCESSFUL")
                 .data(userData)
                 .build());
     }
