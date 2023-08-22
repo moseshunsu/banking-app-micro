@@ -67,6 +67,7 @@
 			<scope>test</scope>
 		</dependency>
 
+        <!--    RabbitMq dependencies start   -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-amqp</artifactId>
@@ -77,6 +78,7 @@
             <artifactId>spring-rabbit-test</artifactId>
             <scope>test</scope>
         </dependency>
+        <!--    RabbitMq dependencies end   -->
 
 <!--		<dependency>-->
 <!--			<groupId>org.springframework.security</groupId>-->
